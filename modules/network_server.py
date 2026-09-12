@@ -53,15 +53,21 @@ class ChatServer:
             threading.Thread(target=self._handle_client, args=(conn,), daemon=True).start()
 
     def _handle_client(self, conn: socket.socket) -> None:
+        buffer = b""
         try:
             while True:
                 data = conn.recv(4096)
                 if not data:
                     break
-                message = decode_message(data)
-                self.received_messages.append(message)
-                if self.on_message is not None:
-                    self.on_message(message)
+                buffer += data
+                while b"\n" in buffer:
+                    raw_message, buffer = buffer.split(b"\n", 1)
+                    if not raw_message.strip():
+                        continue
+                    message = decode_message(raw_message)
+                    self.received_messages.append(message)
+                    if self.on_message is not None:
+                        self.on_message(message)
         except OSError:
             pass
         finally:

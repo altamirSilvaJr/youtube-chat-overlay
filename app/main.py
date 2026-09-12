@@ -2,609 +2,290 @@
 
 from __future__ import annotations
 
-import queue
 import sys
-import tkinter as tk
 from pathlib import Path
-from tkinter import colorchooser, ttk
+
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.config import AppConfig, ConfigManager
-from modules.network_client import ChatClient
-from modules.network_server import ChatServer
-from modules.overlay import OverlayRenderer
-from modules.overlay_window import TransparentOverlayWindow
+from app.runtime import YouTubeOverlayApp
 from modules.youtube_chat import YouTubeChatCollector
 
 
-class DummyVar:
-    """Estrutura mínima para simular StringVar/BooleanVar em ambientes sem Tk completo."""
+class ValueVar:
+    """Adaptador pequeno para manter a API get/set usada pelos testes."""
 
     def __init__(self, value=None):
         self._value = value
+        self._callbacks = []
 
     def set(self, value):
         self._value = value
+        for callback in list(self._callbacks):
+            callback()
 
     def get(self):
         return self._value
 
-
-class DummyRoot:
-    """Implementa um stub leve para permitir testes headless de UI e overlay."""
-
-    def __init__(self):
-        self._destroyed = False
-
-    def title(self, *_args, **_kwargs):
-        return None
-
-    def geometry(self, *_args, **_kwargs):
-        return None
-
-    def overrideredirect(self, *_args, **_kwargs):
-        return None
-
-    def attributes(self, *_args, **_kwargs):
-        return None
-
-    def configure(self, *_args, **_kwargs):
-        return None
-
-    def protocol(self, *_args, **_kwargs):
-        return None
-
-    def update_idletasks(self, *_args, **_kwargs):
-        return None
-
-    def destroy(self):
-        self._destroyed = True
-
-    def mainloop(self):
-        return None
-
-    def winfo_exists(self):
-        return not self._destroyed
+    def trace_add(self, _mode, callback):
+        self._callbacks.append(lambda: callback())
 
 
-class YouTubeOverlayApp:
-    """Orquestra o fluxo principal do projeto com suporte a múltiplos modos de operação."""
+class ConfigurationWindow(QWidget):
+    """Janela PyQt de configuração do projeto com suporte a modos de operação."""
 
-    def __init__(
-        self,
-        live_id: str = "",
-        api_key: str = "",
-        host: str = "127.0.0.1",
-        port: int = 9000,
-        mode: str = "demo",
-        overlay_enabled: bool = True,
-        overlay_width: int = 500,
-        overlay_height: int = 300,
-        overlay_x: int = 100,
-        overlay_y: int = 100,
-        overlay_opacity: float = 0.9,
-        background_opacity: float | None = None,
-        message_opacity: float = 0.9,
-        background_color: str = "#0b0b0f",
-        message_box_color: str = "#111827",
-        message_border_color: str = "#4b5563",
-        message_border_width: int = 1,
-        user_name_color: str = "#f3f4f6",
-        message_color: str = "#e5e7eb",
-        message_font_size: int = 12,
-        max_messages: int = 10,
-        message_order: str = "top_down",
-        status_callback=None,
-    ) -> None:
-        self.live_id = live_id
-        self.api_key = api_key
-        self.host = host
-        self.port = port
-        self.mode = mode
-        self.overlay_enabled = overlay_enabled
-        self.overlay_width = overlay_width
-        self.overlay_height = overlay_height
-        self.overlay_x = overlay_x
-        self.overlay_y = overlay_y
-        self.overlay_opacity = overlay_opacity
-        self.background_opacity = overlay_opacity if background_opacity is None else background_opacity
-        self.message_opacity = message_opacity
-        self.background_color = background_color
-        self.message_box_color = message_box_color
-        self.message_border_color = message_border_color
-        self.message_border_width = message_border_width
-        self.user_name_color = user_name_color
-        self.message_color = message_color
-        self.message_font_size = message_font_size
-        self.max_messages = max_messages
-        self.message_order = message_order
-        self.status_callback = status_callback
-
-        self.collector = YouTubeChatCollector(live_id, api_key)
-        self.pending_messages: queue.Queue[dict] = queue.Queue()
-        self.pending_statuses: queue.Queue[str] = queue.Queue()
-        self.renderer = OverlayRenderer(
-            width=overlay_width,
-            height=overlay_height,
-            opacity=overlay_opacity,
-            max_messages=max_messages,
-            message_order=message_order,
-        )
-        self.overlay_window: TransparentOverlayWindow | None = None
-        self._runtime_started = False
-
-        if mode == "server":
-            self.server = ChatServer(host=host, port=port)
-            self.client = None
-        else:
-            self.server = None
-            self.client = ChatClient(host=host, port=port)
-
-    def build_runtime_config(self) -> dict:
-        """Retorna a configuração ativa do runtime da aplicação."""
-        return {
-            "live_id": self.live_id,
-            "api_key": self.api_key,
-            "host": self.host,
-            "port": self.port,
-            "mode": self.mode,
-            "overlay_enabled": self.overlay_enabled,
-            "overlay_width": self.overlay_width,
-            "overlay_height": self.overlay_height,
-            "overlay_x": self.overlay_x,
-            "overlay_y": self.overlay_y,
-            "overlay_opacity": self.overlay_opacity,
-            "background_opacity": self.background_opacity,
-            "message_opacity": self.message_opacity,
-            "background_color": self.background_color,
-            "message_box_color": self.message_box_color,
-            "message_border_color": self.message_border_color,
-            "message_border_width": self.message_border_width,
-            "user_name_color": self.user_name_color,
-            "message_color": self.message_color,
-            "message_font_size": self.message_font_size,
-            "max_messages": self.max_messages,
-            "message_order": self.message_order,
-        }
-
-    def _set_status(self, message: str) -> None:
-        self.pending_statuses.put(message)
-        if self.status_callback is not None:
-            self.status_callback(message)
-
-    def create_overlay_window(self) -> TransparentOverlayWindow:
-        """Cria a janela transparente do overlay para exibição no streaming."""
-        self.overlay_window = TransparentOverlayWindow(
-            width=self.overlay_width,
-            height=self.overlay_height,
-            opacity=self.background_opacity,
-            max_messages=self.max_messages,
-            x_offset=self.overlay_x,
-            y_offset=self.overlay_y,
-            background_opacity=self.background_opacity,
-            message_opacity=self.message_opacity,
-            background_color=self.background_color,
-            message_box_color=self.message_box_color,
-            message_border_color=self.message_border_color,
-            message_border_width=self.message_border_width,
-            user_name_color=self.user_name_color,
-            message_color=self.message_color,
-            message_font_size=self.message_font_size,
-            message_order=self.message_order,
-        )
-        return self.overlay_window
-
-    def run_preview(self) -> None:
-        """Abre uma janela de preview do overlay com mensagens demo para simulação."""
-        if not self.overlay_enabled:
-            print("Overlay está desabilitado na configuração.")
-            return
-
-        if self.overlay_window is None:
-            self.create_overlay_window()
-
-        demo_messages = [
-            {"author": "01 usuario1", "text": "Olá galera!"},
-            {"author": "02 usuario2", "text": "Partida começando!"},
-            {"author": "03 streamer", "text": "Acompanhem os próximos momentos!"},
-            {"author": "04 moderação", "text": "Lembrem de manter o respeito no chat."},
-            {"author": "05 speedfan", "text": "Esse trecho ficou muito bom."},
-            {"author": "06 nightbot", "text": "Siga o canal para receber aviso das próximas lives."},
-            {"author": "07 ana", "text": "Qual configuração você está usando hoje?"},
-            {"author": "08 bruno", "text": "Overlay está bem legível agora."},
-            {"author": "09 carlos", "text": "Manda salve para a galera do Discord!"},
-            {"author": "10 streamer", "text": "Valeu demais por acompanharem a live."},
-        ]
-
-        for message in demo_messages:
-            self.overlay_window.add_message(message)
-
-        self.overlay_window.root.update_idletasks()
-        print("Preview do overlay aberto com mensagens de demonstração.")
-
-    def _handle_incoming_message(self, message: dict) -> None:
-        self.pending_messages.put(message)
-
-    def process_pending_messages(self) -> int:
-        """Renderiza mensagens pendentes na thread da interface."""
-        processed = 0
-        while True:
-            try:
-                message = self.pending_messages.get_nowait()
-            except queue.Empty:
-                break
-
-            self._render_message(message)
-            processed += 1
-
-        return processed
-
-    def process_pending_statuses(self) -> str | None:
-        """Retorna o status mais recente pendente."""
-        latest_status = None
-        while True:
-            try:
-                latest_status = self.pending_statuses.get_nowait()
-            except queue.Empty:
-                break
-        return latest_status
-
-    def _render_message(self, message: dict) -> None:
-        if self.overlay_enabled:
-            if self.overlay_window is None:
-                self.create_overlay_window()
-            self.overlay_window.add_message(message)
-            self.overlay_window.root.update_idletasks()
-        else:
-            self.renderer.add_message(message)
-
-    def _handle_collector_error(self, exc: Exception) -> None:
-        message = self.translate_runtime_error(exc)
-        self._set_status(message)
-        print(message)
-
-    @staticmethod
-    def translate_runtime_error(exc: Exception) -> str:
-        raw = str(exc)
-        lowered = raw.lower()
-        if "api key not valid" in lowered or "keyinvalid" in lowered or "forbidden" in lowered:
-            return "API key inválida ou sem permissão para YouTube Data API."
-        if "quota" in lowered:
-            return "Cota da YouTube Data API excedida."
-        if "chat ao vivo não encontrado" in lowered or "activeLiveChatId" in raw:
-            return "Chat ao vivo não encontrado. Verifique se a live está ao vivo e com chat ativo."
-        if "live não encontrada" in lowered:
-            return "Live não encontrada. Confira o link ou ID informado."
-        if "falha de rede" in lowered:
-            return "Falha de rede ao consultar o YouTube. Tentando novamente."
-        return f"Erro no coletor do YouTube: {exc}"
-
-    def run_youtube_to_overlay(self) -> None:
-        """Coleta chat do YouTube e renderiza localmente."""
-        if not self.collector.connect():
-            self._set_status("Live ID/URL e API key são obrigatórios.")
-            return
-        if self.overlay_enabled and self.overlay_window is None:
-            self.create_overlay_window()
-        self._set_status("Conectando ao chat do YouTube...")
-        self.collector.start_polling(self._handle_incoming_message, self._handle_collector_error)
-        self._runtime_started = True
-        self._set_status("Coleta do chat do YouTube iniciada.")
-        print("Coleta do chat do YouTube iniciada.")
-
-    def run_youtube_to_network(self) -> None:
-        """Coleta chat do YouTube e envia para outro computador via TCP."""
-        if not self.collector.connect():
-            self._set_status("Live ID/URL e API key são obrigatórios.")
-            return
-        connected = self.client.connect()
-        if not connected:
-            self._set_status(f"Não foi possível conectar ao servidor em {self.host}:{self.port}")
-            return
-
-        def send_message(message: dict) -> None:
-            self.client.send_message(message)
-
-        self._set_status("Conectado ao PC de stream. Iniciando YouTube...")
-        self.collector.start_polling(send_message, self._handle_collector_error)
-        self._runtime_started = True
-        self._set_status(f"Cliente conectado em {self.host}:{self.port}; coleta iniciada.")
-        print(f"Cliente conectado em {self.host}:{self.port}; coleta do YouTube iniciada.")
-
-    def run(self) -> None:
-        """Executa o modo ativo da aplicação."""
-        if self.mode == "demo":
-            self.run_preview()
-            return
-
-        if self.mode == "same_pc":
-            if self.collector.connect():
-                self.run_youtube_to_overlay()
-            elif self.overlay_enabled:
-                self.run_preview()
-            else:
-                print("Modo same_pc ativo sem overlay.")
-            return
-
-        if self.mode == "server":
-            if self.overlay_enabled and self.overlay_window is None:
-                self.create_overlay_window()
-            self.server.on_message = self._handle_incoming_message
-            self.server.start()
-            self._runtime_started = True
-            self._set_status(f"Servidor TCP escutando em {self.host}:{self.server.port}.")
-            print(f"Servidor TCP inicializado em {self.host}:{self.port}")
-            return
-
-        if self.mode == "client" and self.collector.connect():
-            self.run_youtube_to_network()
-            return
-
-        connected = self.client.connect()
-        if not connected:
-            self._set_status(f"Não foi possível conectar ao servidor em {self.host}:{self.port}")
-            print(f"Não foi possível conectar ao servidor em {self.host}:{self.port}")
-            return
-
-        print(f"Cliente conectado em {self.host}:{self.port}")
-
-        message_payload = {
-            "message_id": "demo-message",
-            "timestamp": "2026-09-12T12:00:00Z",
-            "author": "streamer",
-            "text": "Mensagem de teste do overlay",
-            "event_type": "chat_message",
-            "metadata": {},
-        }
-        self.client.send_message(message_payload)
-
-        if self.overlay_enabled:
-            if self.overlay_window is None:
-                self.create_overlay_window()
-            self.overlay_window.add_message(message_payload)
-            self.overlay_window.root.update_idletasks()
-        else:
-            self.renderer.add_message(message_payload)
-
-        print("Mensagem de teste enviada com sucesso.")
-
-    def stop(self) -> None:
-        """Encerra recursos ativos do runtime."""
-        self.collector.stop_polling()
-        if self.client is not None:
-            self.client.close()
-        if self.server is not None:
-            self.server.stop()
-
-
-class ConfigurationWindow:
-    """Janela padrão de configuração do projeto com suporte a modos de operação."""
-
-    def __init__(self, master: tk.Tk | None = None, config_path: str | Path | None = None) -> None:
-        try:
-            self.master = master or tk.Tk()
-            self._headless = False
-        except tk.TclError:
-            self.master = master or DummyRoot()
-            self._headless = True
+    def __init__(self, master: QWidget | None = None, config_path: str | Path | None = None) -> None:
+        self._qt_app = QApplication.instance() or QApplication([])
+        super().__init__(master)
+        self.master = self
 
         self.config_manager = ConfigManager(config_path or ROOT / "config" / "settings.json")
         saved_config = self.config_manager.config
         saved_api_key = saved_config.youtube_api_key or YouTubeChatCollector.load_api_key_from_env(str(ROOT / ".env"))
 
-        if not self._headless:
-            self.master.title("YouTube Overlay - Configuração")
-            self.master.geometry("760x560")
-            self.master.minsize(720, 520)
-
-        self.role_var = tk.StringVar(value=saved_config.role) if not self._headless else DummyVar(saved_config.role)
-        self.live_id_var = tk.StringVar(value=saved_config.youtube_live_id) if not self._headless else DummyVar(saved_config.youtube_live_id)
-        self.api_key_var = tk.StringVar(value=saved_api_key) if not self._headless else DummyVar(saved_api_key)
-        self.save_api_key_var = tk.BooleanVar(value=saved_config.save_api_key) if not self._headless else DummyVar(saved_config.save_api_key)
-        self.enable_overlay_var = tk.BooleanVar(value=saved_config.enable_overlay) if not self._headless else DummyVar(saved_config.enable_overlay)
-        self.background_transparency_var = tk.DoubleVar(value=saved_config.background_opacity * 100) if not self._headless else DummyVar(saved_config.background_opacity * 100)
+        self.role_var = ValueVar(saved_config.role)
+        self.live_id_var = ValueVar(saved_config.youtube_live_id)
+        self.api_key_var = ValueVar(saved_api_key)
+        self.save_api_key_var = ValueVar(saved_config.save_api_key)
+        self.enable_overlay_var = ValueVar(saved_config.enable_overlay)
+        self.background_transparency_var = ValueVar(saved_config.background_opacity * 100)
         self.overlay_transparency_var = self.background_transparency_var
-        self.message_transparency_var = tk.DoubleVar(value=saved_config.message_opacity * 100) if not self._headless else DummyVar(saved_config.message_opacity * 100)
+        self.message_transparency_var = ValueVar(saved_config.message_opacity * 100)
         self.background_opacity_var = self.background_transparency_var
         self.overlay_opacity_var = self.background_transparency_var
         self.message_opacity_var = self.message_transparency_var
-        self.background_color_var = tk.StringVar(value=saved_config.background_color) if not self._headless else DummyVar(saved_config.background_color)
-        self.message_box_color_var = tk.StringVar(value=saved_config.message_box_color) if not self._headless else DummyVar(saved_config.message_box_color)
-        self.message_border_color_var = tk.StringVar(value=saved_config.message_border_color) if not self._headless else DummyVar(saved_config.message_border_color)
-        self.message_border_width_var = tk.IntVar(value=saved_config.message_border_width) if not self._headless else DummyVar(saved_config.message_border_width)
-        self.user_name_color_var = tk.StringVar(value=saved_config.user_name_color) if not self._headless else DummyVar(saved_config.user_name_color)
-        self.message_color_var = tk.StringVar(value=saved_config.message_color) if not self._headless else DummyVar(saved_config.message_color)
-        self.message_font_size_var = tk.IntVar(value=saved_config.message_font_size) if not self._headless else DummyVar(saved_config.message_font_size)
-        self.max_messages_var = tk.IntVar(value=saved_config.max_messages) if not self._headless else DummyVar(saved_config.max_messages)
-        self.message_order_var = tk.StringVar(value=self._display_message_order(saved_config.message_order)) if not self._headless else DummyVar(self._display_message_order(saved_config.message_order))
-        self.server_host_var = tk.StringVar(value=saved_config.server_host) if not self._headless else DummyVar(saved_config.server_host)
-        self.server_port_var = tk.StringVar(value=str(saved_config.server_port)) if not self._headless else DummyVar(str(saved_config.server_port))
-        self.client_host_var = tk.StringVar(value=saved_config.client_host) if not self._headless else DummyVar(saved_config.client_host)
-        self.client_port_var = tk.StringVar(value=str(saved_config.client_port)) if not self._headless else DummyVar(str(saved_config.client_port))
-        self.background_opacity_label_var = tk.StringVar(value=f"{int(saved_config.background_opacity * 100)}%") if not self._headless else DummyVar(f"{int(saved_config.background_opacity * 100)}%")
-        self.message_opacity_label_var = tk.StringVar(value=f"{int(saved_config.message_opacity * 100)}%") if not self._headless else DummyVar(f"{int(saved_config.message_opacity * 100)}%")
-        self.status_var = tk.StringVar(value="Pronto.") if not self._headless else DummyVar("Pronto.")
+        self.background_color_var = ValueVar(saved_config.background_color)
+        self.message_box_color_var = ValueVar(saved_config.message_box_color)
+        self.message_border_color_var = ValueVar(saved_config.message_border_color)
+        self.message_border_width_var = ValueVar(saved_config.message_border_width)
+        self.user_name_color_var = ValueVar(saved_config.user_name_color)
+        self.message_color_var = ValueVar(saved_config.message_color)
+        self.message_font_size_var = ValueVar(saved_config.message_font_size)
+        self.max_messages_var = ValueVar(saved_config.max_messages)
+        self.message_order_var = ValueVar(self._display_message_order(saved_config.message_order))
+        self.server_host_var = ValueVar(saved_config.server_host)
+        self.server_port_var = ValueVar(str(saved_config.server_port))
+        self.client_host_var = ValueVar(saved_config.client_host)
+        self.client_port_var = ValueVar(str(saved_config.client_port))
+        self.background_opacity_label_var = ValueVar(f"{int(saved_config.background_opacity * 100)}%")
+        self.message_opacity_label_var = ValueVar(f"{int(saved_config.message_opacity * 100)}%")
+        self.status_var = ValueVar("Pronto.")
 
         self.active_overlay_app: YouTubeOverlayApp | None = None
-        self._message_pump_id = None
+        self._message_pump_active = False
+        self._field_bindings: dict[ValueVar, list] = {}
+        self.color_swatches: list[tuple[ValueVar, QPushButton]] = []
 
-        if not self._headless:
-            self._build_form()
-            self.master.protocol("WM_DELETE_WINDOW", self.close_window)
+        self.setWindowTitle("YouTube Overlay - Configuração")
+        self.resize(760, 560)
+        self.setMinimumSize(720, 520)
+        self._build_form()
+
+    def _bind_var(self, var: ValueVar, setter) -> None:
+        self._field_bindings.setdefault(var, []).append(setter)
+
+    def _sync_bound_widgets(self, var: ValueVar) -> None:
+        for setter in self._field_bindings.get(var, []):
+            setter(var.get())
+
+    def _set_var(self, var: ValueVar, value, sync: bool = True) -> None:
+        var.set(value)
+        if sync:
+            self._sync_bound_widgets(var)
 
     def _build_form(self) -> None:
-        if self._headless:
-            return
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
-        self.master.columnconfigure(0, weight=1)
-        self.master.rowconfigure(0, weight=1)
+        self.notebook = QTabWidget(self)
+        layout.addWidget(self.notebook, 1)
 
-        notebook = ttk.Notebook(self.master)
-        notebook.grid(row=0, column=0, padx=12, pady=12, sticky="nsew")
-        self.notebook = notebook
+        live_tab = QWidget()
+        appearance_tab = QWidget()
+        network_tab = QWidget()
+        self.notebook.addTab(live_tab, "Live")
+        self.notebook.addTab(appearance_tab, "Aparência")
+        self.notebook.addTab(network_tab, "Rede")
 
-        live_tab = ttk.Frame(notebook, padding=14)
-        appearance_tab = ttk.Frame(notebook, padding=14)
-        network_tab = ttk.Frame(notebook, padding=14)
-        notebook.add(live_tab, text="Live")
-        notebook.add(appearance_tab, text="Aparencia")
-        notebook.add(network_tab, text="Rede")
+        self._build_live_tab(live_tab)
+        self._build_appearance_tab(appearance_tab)
+        self._build_network_tab(network_tab)
 
-        footer = ttk.Frame(self.master, padding=(12, 0, 12, 12))
-        footer.grid(row=1, column=0, sticky="ew")
-        footer.columnconfigure(0, weight=1)
-        footer.columnconfigure(1, weight=1)
-        footer.columnconfigure(2, weight=1)
+        footer = QGridLayout()
+        layout.addLayout(footer)
+        self.status_label = QLabel(self.status_var.get())
+        footer.addWidget(self.status_label, 0, 0, 1, 3)
+        self._bind_var(self.status_var, self.status_label.setText)
 
-        for tab in (live_tab, appearance_tab, network_tab):
-            tab.columnconfigure(1, weight=1)
+        self.start_button = QPushButton("Iniciar overlay")
+        self.start_button.clicked.connect(self.start_app)
+        save_button = QPushButton("Salvar configuração")
+        save_button.clicked.connect(self.save_settings)
+        reload_button = QPushButton("Recarregar configuração")
+        reload_button.clicked.connect(self.load_settings)
+        footer.addWidget(self.start_button, 1, 0)
+        footer.addWidget(save_button, 1, 1)
+        footer.addWidget(reload_button, 1, 2)
 
-        ttk.Label(live_tab, text="Modo de operação:").grid(row=0, column=0, padx=0, pady=8, sticky="w")
-        role_combo = ttk.Combobox(
-            live_tab,
-            textvariable=self.role_var,
-            values=["same_pc", "gamer", "stream", "demo"],
-            state="readonly",
-        )
-        role_combo.set("same_pc")
-        role_combo.grid(row=0, column=1, padx=(12, 0), pady=8, sticky="ew")
-
-        ttk.Label(live_tab, text="Live ID do YouTube:").grid(row=1, column=0, padx=0, pady=8, sticky="w")
-        ttk.Entry(live_tab, textvariable=self.live_id_var).grid(row=1, column=1, padx=(12, 0), pady=8, sticky="ew")
-
-        ttk.Label(live_tab, text="API Key:").grid(row=2, column=0, padx=0, pady=8, sticky="w")
-        ttk.Entry(live_tab, textvariable=self.api_key_var, show="*").grid(row=2, column=1, padx=(12, 0), pady=8, sticky="ew")
-
-        ttk.Checkbutton(
-            live_tab,
-            text="Salvar API key no JSON",
-            variable=self.save_api_key_var,
-            onvalue=True,
-            offvalue=False,
-        ).grid(row=3, column=0, columnspan=2, padx=0, pady=8, sticky="w")
-
-        ttk.Checkbutton(
-            live_tab,
-            text="Ativar overlay na tela de transmissão",
-            variable=self.enable_overlay_var,
-            onvalue=True,
-            offvalue=False,
-        ).grid(row=4, column=0, columnspan=2, padx=0, pady=12, sticky="w")
-
-        ttk.Label(appearance_tab, text="Opacidade do fundo:").grid(row=0, column=0, padx=0, pady=8, sticky="w")
-        background_transparency_slider = ttk.Scale(
-            appearance_tab,
-            from_=0,
-            to_=100,
-            orient="horizontal",
-            variable=self.background_transparency_var,
-            command=lambda value: self._on_opacity_slider_changed(value),
-        )
-        background_transparency_slider.grid(row=0, column=1, padx=(12, 8), pady=8, sticky="ew")
-        ttk.Label(appearance_tab, textvariable=self.background_opacity_label_var, width=5).grid(row=0, column=2, pady=8, sticky="e")
-        self.background_transparency_slider = background_transparency_slider
-
-        ttk.Label(appearance_tab, text="Opacidade das caixas:").grid(row=1, column=0, padx=0, pady=8, sticky="w")
-        message_transparency_slider = ttk.Scale(
-            appearance_tab,
-            from_=0,
-            to_=100,
-            orient="horizontal",
-            variable=self.message_transparency_var,
-            command=lambda value: self._on_opacity_slider_changed(value),
-        )
-        message_transparency_slider.grid(row=1, column=1, padx=(12, 8), pady=8, sticky="ew")
-        ttk.Label(appearance_tab, textvariable=self.message_opacity_label_var, width=5).grid(row=1, column=2, pady=8, sticky="e")
-        self.message_transparency_slider = message_transparency_slider
-
-        self._add_color_row(appearance_tab, 2, "Cor do fundo:", self.background_color_var)
-        self._add_color_row(appearance_tab, 3, "Cor das caixas:", self.message_box_color_var)
-        self._add_color_row(appearance_tab, 4, "Cor da borda:", self.message_border_color_var)
-
-        ttk.Label(appearance_tab, text="Espessura da borda:").grid(row=5, column=0, padx=0, pady=8, sticky="w")
-        ttk.Spinbox(appearance_tab, from_=0, to_=10, textvariable=self.message_border_width_var, width=8).grid(row=5, column=1, padx=(12, 0), pady=8, sticky="w")
-        self.message_border_width_var.trace_add("write", lambda *_: self._on_style_changed())
-
-        self._add_color_row(appearance_tab, 6, "Cor do usuário:", self.user_name_color_var)
-        self._add_color_row(appearance_tab, 7, "Cor da mensagem:", self.message_color_var)
-
-        ttk.Label(appearance_tab, text="Tamanho da fonte:").grid(row=8, column=0, padx=0, pady=8, sticky="w")
-        ttk.Spinbox(appearance_tab, from_=9, to_=28, textvariable=self.message_font_size_var, width=8).grid(row=8, column=1, padx=(12, 0), pady=8, sticky="w")
-        self.message_font_size_var.trace_add("write", lambda *_: self._on_style_changed())
-
-        ttk.Label(appearance_tab, text="Mensagens visíveis:").grid(row=9, column=0, padx=0, pady=8, sticky="w")
-        ttk.Spinbox(appearance_tab, from_=1, to_=50, textvariable=self.max_messages_var, width=8).grid(row=9, column=1, padx=(12, 0), pady=8, sticky="w")
-        self.max_messages_var.trace_add("write", lambda *_: self._on_style_changed())
-
-        ttk.Label(appearance_tab, text="Novas mensagens:").grid(row=10, column=0, padx=0, pady=8, sticky="w")
-        order_combo = ttk.Combobox(
-            appearance_tab,
-            textvariable=self.message_order_var,
-            values=["No topo", "Embaixo"],
-            state="readonly",
-        )
-        order_combo.grid(row=10, column=1, padx=(12, 0), pady=8, sticky="ew")
-        self.message_order_var.trace_add("write", lambda *_: self._on_style_changed())
-
-        self.stream_network_frame = ttk.LabelFrame(network_tab, text="Computador de stream", padding=12)
-        self.stream_network_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 12))
-        self.stream_network_frame.columnconfigure(1, weight=1)
-        ttk.Label(self.stream_network_frame, text="Host do servidor:").grid(row=0, column=0, pady=6, sticky="w")
-        ttk.Entry(self.stream_network_frame, textvariable=self.server_host_var).grid(row=0, column=1, padx=(12, 0), pady=6, sticky="ew")
-        ttk.Label(self.stream_network_frame, text="Porta do servidor:").grid(row=1, column=0, pady=6, sticky="w")
-        ttk.Entry(self.stream_network_frame, textvariable=self.server_port_var).grid(row=1, column=1, padx=(12, 0), pady=6, sticky="ew")
-
-        self.gamer_network_frame = ttk.LabelFrame(network_tab, text="Computador gamer", padding=12)
-        self.gamer_network_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
-        self.gamer_network_frame.columnconfigure(1, weight=1)
-        ttk.Label(self.gamer_network_frame, text="Host do stream:").grid(row=0, column=0, pady=6, sticky="w")
-        ttk.Entry(self.gamer_network_frame, textvariable=self.client_host_var).grid(row=0, column=1, padx=(12, 0), pady=6, sticky="ew")
-        ttk.Label(self.gamer_network_frame, text="Porta do stream:").grid(row=1, column=0, pady=6, sticky="w")
-        ttk.Entry(self.gamer_network_frame, textvariable=self.client_port_var).grid(row=1, column=1, padx=(12, 0), pady=6, sticky="ew")
-
-        ttk.Label(footer, textvariable=self.status_var, anchor="w").grid(row=0, column=0, columnspan=3, pady=(0, 8), sticky="ew")
-        self.start_button = ttk.Button(footer, text="Iniciar overlay", command=self.start_app)
-        self.start_button.grid(row=1, column=0, padx=(0, 8), sticky="ew")
-        ttk.Button(footer, text="Salvar configuração", command=self.save_settings).grid(row=1, column=1, padx=4, sticky="ew")
-        ttk.Button(footer, text="Recarregar configuração", command=self.load_settings).grid(row=1, column=2, padx=(8, 0), sticky="ew")
-
-        self.role_var.trace_add("write", lambda *_: self._update_mode_fields())
         self._update_opacity_labels()
         self._update_color_swatches()
         self._update_mode_fields()
 
-    def _add_color_row(self, parent: ttk.Frame, row: int, label: str, var: tk.StringVar) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, padx=0, pady=8, sticky="w")
-        swatch = tk.Button(
-            parent,
-            width=3,
-            relief="solid",
-            borderwidth=1,
-            bg=var.get(),
-            activebackground=var.get(),
-            command=lambda: self._pick_color(var),
-        )
-        swatch.grid(row=row, column=1, padx=(12, 8), pady=8, sticky="w")
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, padx=(54, 0), pady=8, sticky="ew")
-        if not hasattr(self, "color_swatches"):
-            self.color_swatches = []
+    def _build_live_tab(self, tab: QWidget) -> None:
+        form = QFormLayout(tab)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.role_combo = QComboBox()
+        self.role_combo.addItems(["same_pc", "gamer", "stream", "demo"])
+        self.role_combo.setCurrentText(self.role_var.get())
+        self.role_combo.currentTextChanged.connect(lambda value: (self.role_var.set(value), self._update_mode_fields()))
+        form.addRow("Modo de operação:", self.role_combo)
+
+        self.live_id_input = QLineEdit(self.live_id_var.get())
+        self.live_id_input.textChanged.connect(self.live_id_var.set)
+        form.addRow("Live ID do YouTube:", self.live_id_input)
+
+        self.api_key_input = QLineEdit(self.api_key_var.get())
+        self.api_key_input.setEchoMode(QLineEdit.Password)
+        self.api_key_input.textChanged.connect(self.api_key_var.set)
+        form.addRow("API Key:", self.api_key_input)
+
+        self.save_api_key_check = QCheckBox("Salvar API key no JSON")
+        self.save_api_key_check.setChecked(bool(self.save_api_key_var.get()))
+        self.save_api_key_check.toggled.connect(self.save_api_key_var.set)
+        form.addRow("", self.save_api_key_check)
+
+        self.enable_overlay_check = QCheckBox("Ativar overlay na tela de transmissão")
+        self.enable_overlay_check.setChecked(bool(self.enable_overlay_var.get()))
+        self.enable_overlay_check.toggled.connect(self.enable_overlay_var.set)
+        form.addRow("", self.enable_overlay_check)
+
+        self._bind_var(self.role_var, self.role_combo.setCurrentText)
+        self._bind_var(self.live_id_var, self.live_id_input.setText)
+        self._bind_var(self.api_key_var, self.api_key_input.setText)
+        self._bind_var(self.save_api_key_var, self.save_api_key_check.setChecked)
+        self._bind_var(self.enable_overlay_var, self.enable_overlay_check.setChecked)
+
+    def _build_appearance_tab(self, tab: QWidget) -> None:
+        form = QFormLayout(tab)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.background_opacity_spin = self._add_percent_spin(form, "Opacidade do fundo:", self.background_transparency_var)
+        self.message_opacity_spin = self._add_percent_spin(form, "Opacidade das caixas:", self.message_transparency_var)
+        self._add_color_row(form, "Cor do fundo:", self.background_color_var)
+        self._add_color_row(form, "Cor das caixas:", self.message_box_color_var)
+        self._add_color_row(form, "Cor da borda:", self.message_border_color_var)
+
+        self.message_border_width_spin = self._add_int_spin(form, "Espessura da borda:", self.message_border_width_var, 0, 10)
+        self._add_color_row(form, "Cor do usuário:", self.user_name_color_var)
+        self._add_color_row(form, "Cor da mensagem:", self.message_color_var)
+        self.message_font_size_spin = self._add_int_spin(form, "Tamanho da fonte:", self.message_font_size_var, 9, 28)
+        self.max_messages_spin = self._add_int_spin(form, "Mensagens visíveis:", self.max_messages_var, 1, 50)
+
+        self.order_combo = QComboBox()
+        self.order_combo.addItems(["No topo", "Embaixo"])
+        self.order_combo.setCurrentText(self.message_order_var.get())
+        self.order_combo.currentTextChanged.connect(lambda value: (self.message_order_var.set(value), self._on_style_changed()))
+        form.addRow("Novas mensagens:", self.order_combo)
+        self._bind_var(self.message_order_var, self.order_combo.setCurrentText)
+
+    def _build_network_tab(self, tab: QWidget) -> None:
+        layout = QVBoxLayout(tab)
+
+        self.stream_network_frame = QGroupBox("Computador de stream")
+        stream_form = QFormLayout(self.stream_network_frame)
+        self.server_host_input = QLineEdit(self.server_host_var.get())
+        self.server_host_input.textChanged.connect(self.server_host_var.set)
+        self.server_port_input = QLineEdit(self.server_port_var.get())
+        self.server_port_input.textChanged.connect(self.server_port_var.set)
+        stream_form.addRow("Host do servidor:", self.server_host_input)
+        stream_form.addRow("Porta do servidor:", self.server_port_input)
+
+        self.gamer_network_frame = QGroupBox("Computador gamer")
+        gamer_form = QFormLayout(self.gamer_network_frame)
+        self.client_host_input = QLineEdit(self.client_host_var.get())
+        self.client_host_input.textChanged.connect(self.client_host_var.set)
+        self.client_port_input = QLineEdit(self.client_port_var.get())
+        self.client_port_input.textChanged.connect(self.client_port_var.set)
+        gamer_form.addRow("Host do stream:", self.client_host_input)
+        gamer_form.addRow("Porta do stream:", self.client_port_input)
+
+        layout.addWidget(self.stream_network_frame)
+        layout.addWidget(self.gamer_network_frame)
+        layout.addStretch(1)
+
+        self._bind_var(self.server_host_var, self.server_host_input.setText)
+        self._bind_var(self.server_port_var, self.server_port_input.setText)
+        self._bind_var(self.client_host_var, self.client_host_input.setText)
+        self._bind_var(self.client_port_var, self.client_port_input.setText)
+
+    def _add_percent_spin(self, form: QFormLayout, label: str, var: ValueVar) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0, 100)
+        spin.setDecimals(0)
+        spin.setSuffix("%")
+        spin.setValue(float(var.get()))
+        spin.valueChanged.connect(lambda value: (var.set(value), self._on_opacity_slider_changed(value)))
+        form.addRow(label, spin)
+        self._bind_var(var, lambda value, widget=spin: widget.setValue(float(value)))
+        return spin
+
+    def _add_int_spin(self, form: QFormLayout, label: str, var: ValueVar, minimum: int, maximum: int) -> QSpinBox:
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setValue(int(var.get()))
+        spin.valueChanged.connect(lambda value: (var.set(value), self._on_style_changed()))
+        form.addRow(label, spin)
+        self._bind_var(var, lambda value, widget=spin: widget.setValue(int(value)))
+        return spin
+
+    def _add_color_row(self, form: QFormLayout, label: str, var: ValueVar) -> None:
+        row = QHBoxLayout()
+        swatch = QPushButton()
+        swatch.setFixedSize(32, 26)
+        swatch.clicked.connect(lambda: self._pick_color(var))
+        entry = QLineEdit(var.get())
+        entry.textChanged.connect(lambda value: (var.set(value), self._on_color_changed()))
+        row.addWidget(swatch)
+        row.addWidget(entry, 1)
+        wrapper = QFrame()
+        wrapper.setLayout(row)
+        form.addRow(label, wrapper)
         self.color_swatches.append((var, swatch))
-        var.trace_add("write", lambda *_: self._on_color_changed())
+        self._bind_var(var, entry.setText)
 
     def _on_color_changed(self) -> None:
         self._update_color_swatches()
         self._on_style_changed()
 
     def _update_color_swatches(self) -> None:
-        for var, swatch in getattr(self, "color_swatches", []):
+        for var, swatch in self.color_swatches:
             color = var.get().strip() or "#000000"
-            try:
-                swatch.configure(bg=color, activebackground=color)
-            except tk.TclError:
-                swatch.configure(bg="#000000", activebackground="#000000")
+            swatch.setStyleSheet(f"background-color: {color}; border: 1px solid #4b5563;")
 
     def _on_opacity_slider_changed(self, value) -> None:
         self._update_opacity_labels()
@@ -616,23 +297,14 @@ class ConfigurationWindow:
 
     def _update_mode_fields(self) -> None:
         role = self.role_var.get()
-        if role == "gamer":
-            self.stream_network_frame.grid_remove()
-            self.gamer_network_frame.grid()
-        elif role == "stream":
-            self.gamer_network_frame.grid_remove()
-            self.stream_network_frame.grid()
-        else:
-            self.stream_network_frame.grid()
-            self.gamer_network_frame.grid_remove()
+        self.stream_network_frame.setVisible(role != "gamer")
+        self.gamer_network_frame.setVisible(role == "gamer")
 
-    def _pick_color(self, var: tk.StringVar) -> None:
-        """Abre o seletor de cores e atualiza a variável correspondente."""
-        if self._headless:
-            return
-        color = colorchooser.askcolor(title="Escolha uma cor", color=var.get())
-        if color and color[1]:
-            var.set(color[1])
+    def _pick_color(self, var: ValueVar) -> None:
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self._set_var(var, color.name())
+            self._on_color_changed()
 
     def collect_values(self) -> dict:
         """Coleta os valores de configuração do formulário."""
@@ -712,33 +384,32 @@ class ConfigurationWindow:
         )
 
     def _apply_app_config(self, config: AppConfig) -> None:
-        self.role_var.set(config.role)
-        self.live_id_var.set(config.youtube_live_id)
-        self.save_api_key_var.set(config.save_api_key)
+        self._set_var(self.role_var, config.role)
+        self._set_var(self.live_id_var, config.youtube_live_id)
+        self._set_var(self.save_api_key_var, config.save_api_key)
         if config.youtube_api_key:
-            self.api_key_var.set(config.youtube_api_key)
+            self._set_var(self.api_key_var, config.youtube_api_key)
         elif not self.api_key_var.get():
-            self.api_key_var.set(YouTubeChatCollector.load_api_key_from_env(str(ROOT / ".env")))
-        self.enable_overlay_var.set(config.enable_overlay)
-        self.background_transparency_var.set(config.background_opacity * 100)
-        self.message_transparency_var.set(config.message_opacity * 100)
-        self.background_color_var.set(config.background_color)
-        self.message_box_color_var.set(config.message_box_color)
-        self.message_border_color_var.set(config.message_border_color)
-        self.message_border_width_var.set(config.message_border_width)
-        self.user_name_color_var.set(config.user_name_color)
-        self.message_color_var.set(config.message_color)
-        self.message_font_size_var.set(config.message_font_size)
-        self.max_messages_var.set(config.max_messages)
-        self.message_order_var.set(self._display_message_order(config.message_order))
-        self.server_host_var.set(config.server_host)
-        self.server_port_var.set(str(config.server_port))
-        self.client_host_var.set(config.client_host)
-        self.client_port_var.set(str(config.client_port))
+            self._set_var(self.api_key_var, YouTubeChatCollector.load_api_key_from_env(str(ROOT / ".env")))
+        self._set_var(self.enable_overlay_var, config.enable_overlay)
+        self._set_var(self.background_transparency_var, config.background_opacity * 100)
+        self._set_var(self.message_transparency_var, config.message_opacity * 100)
+        self._set_var(self.background_color_var, config.background_color)
+        self._set_var(self.message_box_color_var, config.message_box_color)
+        self._set_var(self.message_border_color_var, config.message_border_color)
+        self._set_var(self.message_border_width_var, config.message_border_width)
+        self._set_var(self.user_name_color_var, config.user_name_color)
+        self._set_var(self.message_color_var, config.message_color)
+        self._set_var(self.message_font_size_var, config.message_font_size)
+        self._set_var(self.max_messages_var, config.max_messages)
+        self._set_var(self.message_order_var, self._display_message_order(config.message_order))
+        self._set_var(self.server_host_var, config.server_host)
+        self._set_var(self.server_port_var, str(config.server_port))
+        self._set_var(self.client_host_var, config.client_host)
+        self._set_var(self.client_port_var, str(config.client_port))
         self._update_opacity_labels()
-        if not self._headless:
-            self._update_color_swatches()
-            self._update_mode_fields()
+        self._update_color_swatches()
+        self._update_mode_fields()
         self._on_style_changed()
 
     def save_settings(self) -> None:
@@ -752,27 +423,20 @@ class ConfigurationWindow:
         self._set_status("Configuração recarregada.")
 
     def _set_status(self, message: str) -> None:
-        self.status_var.set(message)
+        self._set_var(self.status_var, message)
 
     def _capture_active_overlay_geometry(self) -> None:
         if self.active_overlay_app is None or self.active_overlay_app.overlay_window is None:
             return
 
-        overlay_window = self.active_overlay_app.overlay_window
-        root = overlay_window.root
+        root = self.active_overlay_app.overlay_window.root
         try:
-            overlay_x = int(root.winfo_x())
-            overlay_y = int(root.winfo_y())
-            overlay_width = int(root.winfo_width())
-            overlay_height = int(root.winfo_height())
+            overlay_x = int(root.x())
+            overlay_y = int(root.y())
+            overlay_width = int(root.width())
+            overlay_height = int(root.height())
         except Exception:
-            try:
-                overlay_x = int(root.x())
-                overlay_y = int(root.y())
-                overlay_width = int(root.width())
-                overlay_height = int(root.height())
-            except Exception:
-                return
+            return
 
         self.config_manager.config.overlay_x = overlay_x
         self.config_manager.config.overlay_y = overlay_y
@@ -784,13 +448,13 @@ class ConfigurationWindow:
         self.active_overlay_app.overlay_height = overlay_height
 
     def _schedule_message_pump(self) -> None:
-        if self._headless or self.active_overlay_app is None:
+        if self.active_overlay_app is None or self._message_pump_active:
             return
-        if self._message_pump_id is None:
-            self._message_pump_id = self.master.after(100, self._pump_pending_messages)
+        self._message_pump_active = True
+        QTimer.singleShot(100, self._pump_pending_messages)
 
     def _pump_pending_messages(self) -> None:
-        self._message_pump_id = None
+        self._message_pump_active = False
         if self.active_overlay_app is None:
             return
         latest_status = self.active_overlay_app.process_pending_statuses()
@@ -872,8 +536,11 @@ class ConfigurationWindow:
     def close_window(self) -> None:
         """Fecha o overlay vinculado e encerra a janela de configuração."""
         self._close_active_overlay()
-        if not self._headless and hasattr(self.master, "destroy"):
-            self.master.destroy()
+        self.close()
+
+    def closeEvent(self, event) -> None:
+        self._close_active_overlay()
+        event.accept()
 
     def _close_active_overlay(self) -> None:
         """Fecha a janela do overlay se ela estiver aberta."""
@@ -883,14 +550,13 @@ class ConfigurationWindow:
         self._capture_active_overlay_geometry()
         self.active_overlay_app.stop()
         overlay_window = self.active_overlay_app.overlay_window
-        if overlay_window is not None and overlay_window.root.winfo_exists():
+        if overlay_window is not None:
             overlay_window.close()
 
         self.active_overlay_app = None
-        self._message_pump_id = None
+        self._message_pump_active = False
         self.config_manager.save(self._build_app_config())
-        if not self._headless and hasattr(self, "start_button"):
-            self.start_button.configure(text="Iniciar overlay")
+        self.start_button.setText("Iniciar overlay")
 
     def start_app(self) -> None:
         """Alterna a abertura do overlay: abre se estiver fechado e fecha se já estiver aberto."""
@@ -949,23 +615,22 @@ class ConfigurationWindow:
 
         if app.overlay_window is not None or app._runtime_started:
             self.active_overlay_app = app
-            if not self._headless and hasattr(self, "start_button"):
-                self.start_button.configure(text="Fechar overlay")
+            self.start_button.setText("Fechar overlay")
             if app.overlay_window is not None:
                 app.overlay_window.root.update_idletasks()
             self._schedule_message_pump()
             return
 
         self.active_overlay_app = None
-        if not self._headless and hasattr(self, "start_button"):
-            self.start_button.configure(text="Iniciar overlay")
+        self.start_button.setText("Iniciar overlay")
 
 
 def launch_config_window() -> None:
     """Abre a janela principal de configuração."""
-    root = tk.Tk()
-    ConfigurationWindow(root)
-    root.mainloop()
+    app = QApplication.instance() or QApplication(sys.argv)
+    window = ConfigurationWindow()
+    window.show()
+    app.exec_()
 
 
 def main() -> None:

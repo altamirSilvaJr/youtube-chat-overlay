@@ -214,3 +214,5 @@ class YouTubeChatCollector:
     def stop_polling(self) -> None:
         """Para o polling de mensagens."""
         self._shutdown.set()
+        if self._polling_thread and self._polling_thread.is_alive():
+            self._polling_thread.join(timeout=2)

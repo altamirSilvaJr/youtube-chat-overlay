@@ -1,4 +1,4 @@
-from app.main import YouTubeOverlayApp
+from app.runtime import YouTubeOverlayApp
 
 
 def test_runtime_creates_overlay_window_for_client_mode():

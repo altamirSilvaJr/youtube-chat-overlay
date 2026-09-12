@@ -1,8 +1,12 @@
 from app.main import ConfigurationWindow
 
 
-def test_settings_window_collects_fields():
-    window = ConfigurationWindow(master=None)
+def make_window(tmp_path):
+    return ConfigurationWindow(master=None, config_path=tmp_path / "settings.json")
+
+
+def test_settings_window_collects_fields(tmp_path):
+    window = make_window(tmp_path)
     window.live_id_var.set("live-1")
     window.api_key_var.set("key-1")
     window.server_host_var.set("10.0.0.2")
@@ -24,8 +28,8 @@ def test_settings_window_collects_fields():
     assert values["enable_overlay"] is True
 
 
-def test_configuration_window_does_not_expose_overlay_size_fields():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_does_not_expose_overlay_size_fields(tmp_path):
+    window = make_window(tmp_path)
 
     assert not hasattr(window, "overlay_width_var")
     assert not hasattr(window, "overlay_height_var")
@@ -35,8 +39,8 @@ def test_configuration_window_does_not_expose_overlay_size_fields():
     assert "overlay_height" not in values
 
 
-def test_configuration_window_collects_style_settings():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_collects_style_settings(tmp_path):
+    window = make_window(tmp_path)
     window.background_opacity_var.set(0.45)
     window.message_opacity_var.set(0.75)
     window.background_color_var.set("#101010")
@@ -99,8 +103,8 @@ def test_configuration_window_does_not_save_api_key_by_default(tmp_path):
     assert loaded_window.config_manager.config.save_api_key is False
 
 
-def test_configuration_window_updates_status_text():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_updates_status_text(tmp_path):
+    window = make_window(tmp_path)
 
     window._set_status("Chat ativo.")
 
@@ -129,8 +133,8 @@ def test_configuration_window_saves_overlay_position(tmp_path):
     assert loaded_window.config_manager.config.overlay_height == 360
 
 
-def test_configuration_window_toggles_overlay_window():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_toggles_overlay_window(tmp_path):
+    window = make_window(tmp_path)
     window.role_var.set("demo")
     window.enable_overlay_var.set(True)
 
@@ -143,8 +147,8 @@ def test_configuration_window_toggles_overlay_window():
     assert window.active_overlay_app is None
 
 
-def test_configuration_window_updates_overlay_opacity_live():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_updates_overlay_opacity_live(tmp_path):
+    window = make_window(tmp_path)
     window.role_var.set("demo")
     window.enable_overlay_var.set(True)
 
@@ -158,8 +162,8 @@ def test_configuration_window_updates_overlay_opacity_live():
     assert window.active_overlay_app.overlay_window.opacity == 0.55
 
 
-def test_configuration_window_updates_message_opacity_live():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_updates_message_opacity_live(tmp_path):
+    window = make_window(tmp_path)
     window.role_var.set("demo")
     window.enable_overlay_var.set(True)
 
@@ -176,8 +180,8 @@ def test_configuration_window_updates_message_opacity_live():
         assert overlay._impl.message_opacity == 0.35
 
 
-def test_configuration_window_updates_max_messages_live():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_updates_max_messages_live(tmp_path):
+    window = make_window(tmp_path)
     window.role_var.set("demo")
     window.enable_overlay_var.set(True)
 
@@ -194,8 +198,8 @@ def test_configuration_window_updates_max_messages_live():
         assert overlay._impl.renderer.max_messages == 4
 
 
-def test_configuration_window_updates_message_order_live():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_updates_message_order_live(tmp_path):
+    window = make_window(tmp_path)
     window.role_var.set("demo")
     window.enable_overlay_var.set(True)
 
@@ -211,8 +215,8 @@ def test_configuration_window_updates_message_order_live():
         assert overlay._impl.renderer.message_order == "down_top"
 
 
-def test_configuration_window_closes_overlay_when_config_window_closes():
-    window = ConfigurationWindow(master=None)
+def test_configuration_window_closes_overlay_when_config_window_closes(tmp_path):
+    window = make_window(tmp_path)
     window.role_var.set("demo")
     window.enable_overlay_var.set(True)
 

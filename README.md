@@ -16,6 +16,20 @@ Projeto inicial para coletar mensagens de chat de uma live do YouTube, transmiti
 - receber e renderizar o overlay
 - permitir uma configuração básica
 
+## Instalação
+
+Para usar o app:
+
+```bash
+pip install -r requirements.txt
+```
+
+Para desenvolver e rodar testes:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ## Como executar
 
 ```bash

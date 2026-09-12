@@ -1,4 +1,4 @@
-from app.main import YouTubeOverlayApp
+from app.runtime import YouTubeOverlayApp
 
 
 def test_app_builds_runtime_from_config():
