@@ -251,6 +251,28 @@ class YouTubeOverlayApp:
         self._set_status(f"Cliente conectado em {self.host}:{self.port}; coleta iniciada.")
         print(f"Cliente conectado em {self.host}:{self.port}; coleta do YouTube iniciada.")
 
+    def run_youtube_to_overlay_and_network(self) -> None:
+        """Coleta chat do YouTube, renderiza localmente e envia para outro computador via TCP."""
+        if not self.collector.connect():
+            self._set_status("Live ID/URL e API key são obrigatórios.")
+            return
+        connected = self.client.connect()
+        if not connected:
+            self._set_status(f"Não foi possível conectar ao servidor em {self.host}:{self.port}")
+            return
+        if self.overlay_enabled and self.overlay_window is None:
+            self.create_overlay_window()
+
+        def render_and_send_message(message: dict) -> None:
+            self._handle_incoming_message(message)
+            self.client.send_message(message)
+
+        self._set_status("Conectado ao PC de destino. Iniciando YouTube e overlay local...")
+        self.collector.start_polling(render_and_send_message, self._handle_collector_error)
+        self._runtime_started = True
+        self._set_status(f"Overlay local ativo e envio iniciado para {self.host}:{self.port}.")
+        print(f"Overlay local ativo; coleta do YouTube enviando para {self.host}:{self.port}.")
+
     def run(self) -> None:
         """Executa o modo ativo da aplicação."""
         if self.mode == "demo":
@@ -264,6 +286,10 @@ class YouTubeOverlayApp:
                 self.run_preview()
             else:
                 print("Modo same_pc ativo sem overlay.")
+            return
+
+        if self.mode == "same_pc_and_client":
+            self.run_youtube_to_overlay_and_network()
             return
 
         if self.mode == "server":

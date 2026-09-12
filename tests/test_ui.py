@@ -72,8 +72,8 @@ def test_configuration_window_collects_style_settings(tmp_path):
 def test_configuration_window_exposes_clear_operation_modes(tmp_path):
     window = make_window(tmp_path)
 
-    assert set(MODE_OPTIONS) == {"demo", "local_overlay", "send_network", "receive_network"}
-    assert window.role_combo.count() == 4
+    assert set(MODE_OPTIONS) == {"demo", "local_overlay", "send_network", "local_overlay_and_send", "receive_network"}
+    assert window.role_combo.count() == 5
 
 
 def test_configuration_window_migrates_legacy_roles(tmp_path):
@@ -85,6 +85,44 @@ def test_configuration_window_migrates_legacy_roles(tmp_path):
 
     assert window.role_var.get() == "send_network"
     assert window.collect_values()["role"] == "send_network"
+
+
+def test_configuration_window_starts_hybrid_collect_show_and_send_mode(tmp_path, monkeypatch):
+    created = {}
+
+    class FakeRoot:
+        def update_idletasks(self):
+            return None
+
+    class FakeOverlay:
+        root = FakeRoot()
+
+    class FakeRuntime:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+            self.overlay_window = FakeOverlay()
+            self._runtime_started = True
+
+        def run(self):
+            return None
+
+        def process_pending_statuses(self):
+            return None
+
+        def stop(self):
+            return None
+
+    monkeypatch.setattr("app.main.YouTubeOverlayApp", FakeRuntime)
+    window = make_window(tmp_path)
+    window.role_var.set("local_overlay_and_send")
+    window.client_host_var.set("10.0.0.40")
+    window.client_port_var.set("9100")
+
+    window.start_app()
+
+    assert created["mode"] == "same_pc_and_client"
+    assert created["host"] == "10.0.0.40"
+    assert created["port"] == 9100
 
 
 def test_configuration_window_saves_and_loads_settings(tmp_path):

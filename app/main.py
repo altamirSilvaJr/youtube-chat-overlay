@@ -39,6 +39,7 @@ MODE_OPTIONS = {
     "demo": "Demo",
     "local_overlay": "Coletar YouTube e mostrar neste PC",
     "send_network": "Coletar YouTube e enviar pela rede",
+    "local_overlay_and_send": "Coletar YouTube, mostrar neste PC e enviar pela rede",
     "receive_network": "Receber da rede e mostrar neste PC",
 }
 
@@ -318,7 +319,7 @@ class ConfigurationWindow(QWidget):
     def _update_mode_fields(self) -> None:
         role = normalize_role(self.role_var.get())
         self.stream_network_frame.setVisible(role == "receive_network")
-        self.gamer_network_frame.setVisible(role == "send_network")
+        self.gamer_network_frame.setVisible(role in {"send_network", "local_overlay_and_send"})
 
     def _on_role_changed(self, index: int) -> None:
         self.role_var.set(self.role_combo.itemData(index))
@@ -602,6 +603,10 @@ class ConfigurationWindow(QWidget):
             port = config["server_port"]
         elif role == "send_network":
             mode = "client"
+            host = config["client_host"]
+            port = config["client_port"]
+        elif role == "local_overlay_and_send":
+            mode = "same_pc_and_client"
             host = config["client_host"]
             port = config["client_port"]
         elif role == "local_overlay":

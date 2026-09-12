@@ -105,6 +105,23 @@ Campos importantes:
 - **Host de destino**: IP local do computador que está em `receive_network`.
 - **Porta de destino**: a mesma porta configurada no receptor, por padrão `9000`.
 
+### `local_overlay_and_send` - Coletar YouTube, mostrar neste PC e enviar pela rede
+
+Coleta o chat do YouTube, renderiza o overlay localmente e também envia as mensagens para outro PC via TCP.
+
+Use este modo quando:
+
+- o PC gamer precisa ver o chat sobre o jogo;
+- o PC de stream também deve receber as mensagens;
+- você quer evitar duas coletas separadas da API do YouTube.
+
+Campos importantes:
+
+- **Live ID do YouTube**: ID ou link da live.
+- **API Key**: chave da YouTube Data API.
+- **Host de destino**: IP local do computador que está em `receive_network`.
+- **Porta de destino**: a mesma porta configurada no receptor, por padrão `9000`.
+
 ### `receive_network` - Receber da rede e mostrar neste PC
 
 Abre um servidor TCP neste computador, recebe mensagens de outro PC e renderiza o overlay localmente.
@@ -132,6 +149,24 @@ No PC gamer:
 4. Clique em **Iniciar overlay**.
 
 Esse é o fluxo mais simples quando o objetivo é o jogador ver o chat sem olhar para outro monitor.
+
+### PC gamer vê localmente e envia para o PC de stream
+
+No PC de stream:
+
+1. Selecione `receive_network`.
+2. Configure host e porta.
+3. Clique em **Iniciar overlay**.
+
+No PC gamer:
+
+1. Selecione `local_overlay_and_send`.
+2. Informe o link ou ID da live.
+3. Configure a API key.
+4. Informe o IP e a porta do PC de stream.
+5. Clique em **Iniciar overlay**.
+
+Esse é o fluxo recomendado quando o jogador quer ver o chat sobre o jogo e o PC de stream também precisa receber as mensagens.
 
 ### PC de stream coleta, PC gamer exibe
 
