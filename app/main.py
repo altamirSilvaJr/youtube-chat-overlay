@@ -35,6 +35,25 @@ from app.runtime import YouTubeOverlayApp
 from modules.youtube_chat import YouTubeChatCollector
 
 
+MODE_OPTIONS = {
+    "demo": "Demo",
+    "local_overlay": "Coletar YouTube e mostrar neste PC",
+    "send_network": "Coletar YouTube e enviar pela rede",
+    "receive_network": "Receber da rede e mostrar neste PC",
+}
+
+LEGACY_ROLES = {
+    "same_pc": "local_overlay",
+    "gamer": "send_network",
+    "stream": "receive_network",
+}
+
+
+def normalize_role(role: str) -> str:
+    normalized = LEGACY_ROLES.get(role, role)
+    return normalized if normalized in MODE_OPTIONS else "local_overlay"
+
+
 class ValueVar:
     """Adaptador pequeno para manter a API get/set usada pelos testes."""
 
@@ -66,7 +85,7 @@ class ConfigurationWindow(QWidget):
         saved_config = self.config_manager.config
         saved_api_key = saved_config.youtube_api_key or YouTubeChatCollector.load_api_key_from_env(str(ROOT / ".env"))
 
-        self.role_var = ValueVar(saved_config.role)
+        self.role_var = ValueVar(normalize_role(saved_config.role))
         self.live_id_var = ValueVar(saved_config.youtube_live_id)
         self.api_key_var = ValueVar(saved_api_key)
         self.save_api_key_var = ValueVar(saved_config.save_api_key)
@@ -160,9 +179,10 @@ class ConfigurationWindow(QWidget):
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
         self.role_combo = QComboBox()
-        self.role_combo.addItems(["same_pc", "gamer", "stream", "demo"])
-        self.role_combo.setCurrentText(self.role_var.get())
-        self.role_combo.currentTextChanged.connect(lambda value: (self.role_var.set(value), self._update_mode_fields()))
+        for role, label in MODE_OPTIONS.items():
+            self.role_combo.addItem(label, role)
+        self.role_combo.setCurrentIndex(max(0, self.role_combo.findData(self.role_var.get())))
+        self.role_combo.currentIndexChanged.connect(self._on_role_changed)
         form.addRow("Modo de operação:", self.role_combo)
 
         self.live_id_input = QLineEdit(self.live_id_var.get())
@@ -184,7 +204,7 @@ class ConfigurationWindow(QWidget):
         self.enable_overlay_check.toggled.connect(self.enable_overlay_var.set)
         form.addRow("", self.enable_overlay_check)
 
-        self._bind_var(self.role_var, self.role_combo.setCurrentText)
+        self._bind_var(self.role_var, self._set_role_combo_value)
         self._bind_var(self.live_id_var, self.live_id_input.setText)
         self._bind_var(self.api_key_var, self.api_key_input.setText)
         self._bind_var(self.save_api_key_var, self.save_api_key_check.setChecked)
@@ -216,23 +236,23 @@ class ConfigurationWindow(QWidget):
     def _build_network_tab(self, tab: QWidget) -> None:
         layout = QVBoxLayout(tab)
 
-        self.stream_network_frame = QGroupBox("Computador de stream")
+        self.stream_network_frame = QGroupBox("Receber mensagens neste PC")
         stream_form = QFormLayout(self.stream_network_frame)
         self.server_host_input = QLineEdit(self.server_host_var.get())
         self.server_host_input.textChanged.connect(self.server_host_var.set)
         self.server_port_input = QLineEdit(self.server_port_var.get())
         self.server_port_input.textChanged.connect(self.server_port_var.set)
-        stream_form.addRow("Host do servidor:", self.server_host_input)
-        stream_form.addRow("Porta do servidor:", self.server_port_input)
+        stream_form.addRow("Host para escutar:", self.server_host_input)
+        stream_form.addRow("Porta para escutar:", self.server_port_input)
 
-        self.gamer_network_frame = QGroupBox("Computador gamer")
+        self.gamer_network_frame = QGroupBox("Enviar mensagens para outro PC")
         gamer_form = QFormLayout(self.gamer_network_frame)
         self.client_host_input = QLineEdit(self.client_host_var.get())
         self.client_host_input.textChanged.connect(self.client_host_var.set)
         self.client_port_input = QLineEdit(self.client_port_var.get())
         self.client_port_input.textChanged.connect(self.client_port_var.set)
-        gamer_form.addRow("Host do stream:", self.client_host_input)
-        gamer_form.addRow("Porta do stream:", self.client_port_input)
+        gamer_form.addRow("Host de destino:", self.client_host_input)
+        gamer_form.addRow("Porta de destino:", self.client_port_input)
 
         layout.addWidget(self.stream_network_frame)
         layout.addWidget(self.gamer_network_frame)
@@ -296,9 +316,18 @@ class ConfigurationWindow(QWidget):
         self.message_opacity_label_var.set(f"{int(float(self.message_transparency_var.get()))}%")
 
     def _update_mode_fields(self) -> None:
-        role = self.role_var.get()
-        self.stream_network_frame.setVisible(role != "gamer")
-        self.gamer_network_frame.setVisible(role == "gamer")
+        role = normalize_role(self.role_var.get())
+        self.stream_network_frame.setVisible(role == "receive_network")
+        self.gamer_network_frame.setVisible(role == "send_network")
+
+    def _on_role_changed(self, index: int) -> None:
+        self.role_var.set(self.role_combo.itemData(index))
+        self._update_mode_fields()
+
+    def _set_role_combo_value(self, role: str) -> None:
+        index = self.role_combo.findData(normalize_role(role))
+        if index >= 0:
+            self.role_combo.setCurrentIndex(index)
 
     def _pick_color(self, var: ValueVar) -> None:
         color = QColorDialog.getColor()
@@ -311,7 +340,7 @@ class ConfigurationWindow(QWidget):
         background_transparency = self._normalize_transparency_value(self.background_transparency_var.get())
         message_transparency = self._normalize_transparency_value(self.message_transparency_var.get())
         return {
-            "role": self.role_var.get(),
+            "role": normalize_role(self.role_var.get()),
             "live_id": self.live_id_var.get().strip(),
             "api_key": self.api_key_var.get().strip(),
             "enable_overlay": self.enable_overlay_var.get(),
@@ -384,7 +413,7 @@ class ConfigurationWindow(QWidget):
         )
 
     def _apply_app_config(self, config: AppConfig) -> None:
-        self._set_var(self.role_var, config.role)
+        self._set_var(self.role_var, normalize_role(config.role))
         self._set_var(self.live_id_var, config.youtube_live_id)
         self._set_var(self.save_api_key_var, config.save_api_key)
         if config.youtube_api_key:
@@ -565,17 +594,17 @@ class ConfigurationWindow(QWidget):
             return
 
         config = self.collect_values()
-        role = config["role"]
+        role = normalize_role(config["role"])
 
-        if role == "stream":
+        if role == "receive_network":
             mode = "server"
             host = config["server_host"]
             port = config["server_port"]
-        elif role == "gamer":
+        elif role == "send_network":
             mode = "client"
             host = config["client_host"]
             port = config["client_port"]
-        elif role == "same_pc":
+        elif role == "local_overlay":
             mode = "same_pc"
             host = config["server_host"]
             port = config["server_port"]

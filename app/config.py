@@ -11,7 +11,7 @@ from typing import Any
 @dataclass
 class AppConfig:
     """Configuração principal do sistema."""
-    role: str = "same_pc"
+    role: str = "local_overlay"
     youtube_live_id: str = ""
     youtube_api_key: str = ""
     save_api_key: bool = False

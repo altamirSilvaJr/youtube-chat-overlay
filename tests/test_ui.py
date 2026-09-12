@@ -1,4 +1,5 @@
-from app.main import ConfigurationWindow
+from app.config import AppConfig, ConfigManager
+from app.main import ConfigurationWindow, MODE_OPTIONS
 
 
 def make_window(tmp_path):
@@ -13,7 +14,7 @@ def test_settings_window_collects_fields(tmp_path):
     window.server_port_var.set("9100")
     window.client_host_var.set("10.0.0.3")
     window.client_port_var.set("9200")
-    window.role_var.set("stream")
+    window.role_var.set("receive_network")
     window.enable_overlay_var.set(True)
 
     values = window.collect_values()
@@ -24,7 +25,7 @@ def test_settings_window_collects_fields(tmp_path):
     assert values["server_port"] == 9100
     assert values["client_host"] == "10.0.0.3"
     assert values["client_port"] == 9200
-    assert values["role"] == "stream"
+    assert values["role"] == "receive_network"
     assert values["enable_overlay"] is True
 
 
@@ -66,6 +67,24 @@ def test_configuration_window_collects_style_settings(tmp_path):
     assert values["message_font_size"] == 16
     assert values["max_messages"] == 7
     assert values["message_order"] == "down_top"
+
+
+def test_configuration_window_exposes_clear_operation_modes(tmp_path):
+    window = make_window(tmp_path)
+
+    assert set(MODE_OPTIONS) == {"demo", "local_overlay", "send_network", "receive_network"}
+    assert window.role_combo.count() == 4
+
+
+def test_configuration_window_migrates_legacy_roles(tmp_path):
+    config_path = tmp_path / "settings.json"
+    manager = ConfigManager(config_path)
+    manager.save(AppConfig(role="gamer"))
+
+    window = ConfigurationWindow(master=None, config_path=config_path)
+
+    assert window.role_var.get() == "send_network"
+    assert window.collect_values()["role"] == "send_network"
 
 
 def test_configuration_window_saves_and_loads_settings(tmp_path):

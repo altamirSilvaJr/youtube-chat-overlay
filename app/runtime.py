@@ -245,7 +245,7 @@ class YouTubeOverlayApp:
         def send_message(message: dict) -> None:
             self.client.send_message(message)
 
-        self._set_status("Conectado ao PC de stream. Iniciando YouTube...")
+        self._set_status("Conectado ao PC de destino. Iniciando YouTube...")
         self.collector.start_polling(send_message, self._handle_collector_error)
         self._runtime_started = True
         self._set_status(f"Cliente conectado em {self.host}:{self.port}; coleta iniciada.")

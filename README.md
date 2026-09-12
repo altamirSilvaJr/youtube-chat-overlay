@@ -1,22 +1,22 @@
-# YouTube Overlay
+﻿# YouTube Overlay
 
 Projeto inicial para coletar mensagens de chat de uma live do YouTube, transmitir via rede local e renderizar um overlay para streaming.
 
 ## Estrutura do projeto
 
-- `app/` - aplicação principal e configurações
+- `app/` - aplicaÃ§Ã£o principal e configuraÃ§Ãµes
 - `modules/` - coleta do chat, rede e overlay
 - `utils/` - schema e protocolo de mensagens
 - `assets/` - temas e fontes
 
 ## Objetivo do MVP
 
-- conectar à live do YouTube
+- conectar Ã  live do YouTube
 - enviar mensagens por TCP em rede local
 - receber e renderizar o overlay
-- permitir uma configuração básica
+- permitir uma configuraÃ§Ã£o bÃ¡sica
 
-## Instalação
+## InstalaÃ§Ã£o
 
 Para usar o app:
 
@@ -38,16 +38,16 @@ python app/main.py
 
 ## Requisito: YouTube Data API
 
-Para ler mensagens reais do chat ao vivo, é necessário ter uma chave da **YouTube Data API v3** no Google Cloud.
+Para ler mensagens reais do chat ao vivo, Ã© necessÃ¡rio ter uma chave da **YouTube Data API v3** no Google Cloud.
 
 ### Como obter a chave
 
 1. Acesse o Google Cloud Console: https://console.cloud.google.com/
 2. Crie ou selecione um projeto.
-3. Vá em **APIs e serviços** > **Biblioteca**.
+3. VÃ¡ em **APIs e serviÃ§os** > **Biblioteca**.
 4. Pesquise por **YouTube Data API v3**.
 5. Clique em **Ativar**.
-6. Vá em **APIs e serviços** > **Credenciais**.
+6. VÃ¡ em **APIs e serviÃ§os** > **Credenciais**.
 7. Clique em **Criar credenciais** > **Chave de API**.
 8. Copie a chave gerada.
 9. Recomenda-se restringir a chave para uso apenas com **YouTube Data API v3**.
@@ -60,11 +60,11 @@ Crie ou edite o arquivo `.env` na raiz do projeto:
 YOUTUBE_API_KEY=sua_chave_aqui
 ```
 
-Também é possível preencher a chave no campo **API Key** da interface. Por segurança, o app não salva a chave no JSON por padrão. Marque **Salvar API key no JSON** apenas se quiser persistir essa informação em `config/settings.json`.
+TambÃ©m Ã© possÃ­vel preencher a chave no campo **API Key** da interface. Por seguranÃ§a, o app nÃ£o salva a chave no JSON por padrÃ£o. Marque **Salvar API key no JSON** apenas se quiser persistir essa informaÃ§Ã£o em `config/settings.json`.
 
 ## Modos de uso
 
-### `demo`
+### `demo` - Demo
 
 Usa mensagens fictícias para testar o visual do overlay.
 
@@ -76,93 +76,109 @@ Use este modo para:
 
 Não precisa de API key.
 
-### `same_pc`
+### `local_overlay` - Coletar YouTube e mostrar neste PC
 
 Coleta o chat do YouTube e renderiza o overlay no mesmo computador.
 
 Use este modo quando:
 
-- o mesmo PC roda a live, o OBS e o overlay;
-- você quer testar a integração real com uma live pública;
-- não precisa transmitir mensagens pela rede local.
+- você quer ver o chat sobre o jogo no próprio PC gamer;
+- o PC de stream vai capturar a tela/jogo desse computador;
+- você quer rodar tudo em um único PC;
+- não precisa enviar mensagens pela rede local.
 
 Campos importantes:
 
 - **Live ID do YouTube**: pode ser o ID do vídeo ou o link da live.
 - **API Key**: pode vir do `.env` ou do campo da interface.
 
-### `stream`
+### `send_network` - Coletar YouTube e enviar pela rede
 
-Abre o servidor TCP no computador de transmissão e renderiza o overlay nele.
+Coleta o chat do YouTube neste computador e envia as mensagens para outro PC via TCP.
 
-Use este modo no PC que roda o OBS/stream.
-
-Objetivo:
-
-- receber mensagens enviadas por outro computador na rede local;
-- exibir o overlay no computador de stream;
-- permitir captura da janela pelo OBS.
-
-Campos importantes:
-
-- **Host do servidor**: IP local do computador de stream. Em muitos casos, use `0.0.0.0` para escutar na rede.
-- **Porta do servidor**: porta TCP, por padrão `9000`.
-
-### `gamer`
-
-Coleta o chat do YouTube no computador de jogo e envia as mensagens para o computador de stream via TCP.
-
-Use este modo no PC gamer quando:
-
-- o jogo roda em um computador;
-- você não quer ficar olhando para outro monitor para ver o chat;
-- o OBS/overlay roda em outro computador;
-- ambos estão na mesma rede local.
+Use este modo no computador que deve buscar o chat no YouTube, mas não necessariamente exibir o overlay localmente.
 
 Campos importantes:
 
 - **Live ID do YouTube**: ID ou link da live.
 - **API Key**: chave da YouTube Data API.
-- **Host do stream**: IP local do computador que está em modo `stream`.
-- **Porta do stream**: a mesma porta configurada no modo `stream`.
+- **Host de destino**: IP local do computador que está em `receive_network`.
+- **Porta de destino**: a mesma porta configurada no receptor, por padrão `9000`.
+
+### `receive_network` - Receber da rede e mostrar neste PC
+
+Abre um servidor TCP neste computador, recebe mensagens de outro PC e renderiza o overlay localmente.
+
+Use este modo quando:
+
+- este PC deve apenas exibir o overlay;
+- outro computador será responsável por coletar o chat do YouTube;
+- você quer mostrar o chat sobre o jogo em uma máquina que não tem API key.
+
+Campos importantes:
+
+- **Host para escutar**: IP local deste computador. Em muitos casos, use `0.0.0.0` para escutar na rede.
+- **Porta para escutar**: porta TCP, por padrão `9000`.
 
 ## Fluxos recomendados
 
-### Um computador
+### Overlay sobre o jogo no PC gamer
 
-1. Selecione `same_pc`.
+No PC gamer:
+
+1. Selecione `local_overlay`.
 2. Informe o link ou ID da live.
 3. Configure a API key.
 4. Clique em **Iniciar overlay**.
-5. Capture a janela do overlay no OBS.
 
-### Dois computadores
+Esse é o fluxo mais simples quando o objetivo é o jogador ver o chat sem olhar para outro monitor.
 
-No computador de stream:
+### PC de stream coleta, PC gamer exibe
 
-1. Selecione `stream`.
-2. Configure host e porta.
+No PC gamer:
+
+1. Selecione `receive_network`.
+2. Configure **Host para escutar** e **Porta para escutar**.
 3. Clique em **Iniciar overlay**.
-4. Capture a janela do overlay no OBS.
 
-No computador gamer:
+No PC de stream:
 
-1. Selecione `gamer`.
+1. Selecione `send_network`.
 2. Informe o link ou ID da live.
 3. Configure a API key.
-4. Informe o IP e a porta do computador de stream.
-5. Clique em **Iniciar overlay** para iniciar a coleta e envio das mensagens.
+4. Informe o IP e a porta do PC gamer.
+5. Clique em **Iniciar overlay**.
 
-## Configurações salvas
+Nesse fluxo, a API key fica no PC de stream e o PC gamer apenas recebe e mostra o overlay.
 
-As configurações da interface são salvas em:
+### PC gamer coleta, PC de stream exibe
+
+No PC de stream:
+
+1. Selecione `receive_network`.
+2. Configure host e porta.
+3. Clique em **Iniciar overlay**.
+
+No PC gamer:
+
+1. Selecione `send_network`.
+2. Informe o link ou ID da live.
+3. Configure a API key.
+4. Informe o IP e a porta do PC de stream.
+5. Clique em **Iniciar overlay**.
+
+Esse fluxo valida o envio por rede local no sentido oposto.
+
+## ConfiguraÃ§Ãµes salvas
+
+As configuraÃ§Ãµes da interface sÃ£o salvas em:
 
 ```text
 config/settings.json
 ```
 
-Esse arquivo guarda preferências visuais, rede, modo de uso e posição do overlay. A API key só é salva se a opção **Salvar API key no JSON** estiver marcada.
+Esse arquivo guarda preferÃªncias visuais, rede, modo de uso e posiÃ§Ã£o do overlay. A API key sÃ³ Ã© salva se a opÃ§Ã£o **Salvar API key no JSON** estiver marcada.
 
-## Observações
+## ObservaÃ§Ãµes
 
-Este é um ponto de partida para o MVP, e a arquitetura pode ser expandida conforme o projeto evolui.
+Este Ã© um ponto de partida para o MVP, e a arquitetura pode ser expandida conforme o projeto evolui.
